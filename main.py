@@ -3,16 +3,16 @@ import math
 from crossover import crossoverOperators
 from mutacao import mutationOperators
 
-# Configuração do problema
-numPoints = 10 # mudar quando 
+# CONFIG VRP
+numPoints = 10
 startIdx = 0
+numVehicles = 3       
 generations = 100
 popSize = 50
 crossoverRate = 0.9
 mutationRate = 0.05
 
-def generateDistanceMatrix(): #Colocar aqui depois a matriz com dados do wazw
-    """Matriz de distâncias """
+def generateDistanceMatrix():
     distKm = [
         [0, 123, 234, 345, 456, 567, 678, 789, 890, 901],
         [123, 0, 210, 320, 430, 540, 650, 760, 870, 980],
@@ -27,136 +27,124 @@ def generateDistanceMatrix(): #Colocar aqui depois a matriz com dados do wazw
     ]
     return distKm
 
+
+
+def splitIntoVehicles(route):
+    """Divide a rota única em rotas menores para vários veículos"""
+    chunkSize = math.ceil(len(route) / numVehicles)
+    return [route[i:i+chunkSize] for i in range(0, len(route), chunkSize)]
+
+
+
+def fitnessVRP(route, distMatrix):
+    """Calcula o custo total das rotas dos veículos"""
+    total = 0
+    routes = splitIntoVehicles(route)
+
+    for r in routes:
+        current = 0  # depósito
+        for c in r:
+            total += distMatrix[current][c]
+            current = c
+        total += distMatrix[current][0]  # volta ao depósito
+
+    return total
+
+
 def createInitialPopulation():
-    """Cria população inicial de rotas aleatórias"""
     population = []
-    baseRoute = list(range(1, numPoints)) 
-    
+    baseRoute = list(range(1, numPoints))
+
     for _ in range(popSize):
-        route = baseRoute[:]
-        random.shuffle(route)
-        population.append(route)
-    
+        r = baseRoute[:]
+        random.shuffle(r)
+        population.append(r)
+
     return population
 
-def fitnessFunction(route, distMatrix):
-    """Calcula aptidão da rota (distância total)"""
-    totalDistance = 0
-    current = startIdx
-    
-    # Percorrer todos os pontos da rota
-    for point in route:
-        totalDistance += distMatrix[current][point]
-        current = point
-    
-    # Retornar ao ponto inicial
-    totalDistance += distMatrix[current][startIdx]
-    
-    return totalDistance
 
-def printRouteInfo(route, distMatrix, label="Rota"):
-    """Imprime informações da rota"""
-    fitness = fitnessFunction(route, distMatrix)
-    routeStr = f"0 -> {' -> '.join(map(str, route))} -> 0"
-    print(f"{label}: {routeStr}")
-    print(f"Distância total: {fitness} km")
-    print("-" * 50)
+def selectParents(population, dist):
+    k = 3
+    sample = random.sample(population, k)
+    return min(sample, key=lambda r: fitnessVRP(r, dist))
 
-def selectParents(population, distMatrix):
-    """Seleção por torneio"""
-    tournamentSize = 3
-    tournament = random.sample(population, tournamentSize)
-    return min(tournament, key=lambda route: fitnessFunction(route, distMatrix))
 
 def geneticAlgorithm(distMatrix):
-    """Algoritmo Genético completo"""
-    # Escolher operadores
-    print("OPERADORES DE CROSSOVER DISPONÍVEIS:")
+    print("OPERADORES DE CROSSOVER:")
     for i, op in enumerate(crossoverOperators.keys(), 1):
         print(f"{i}. {op}")
-    crossoverChoice = input("\nEscolha o operador de crossover (número): ")
-    crossoverFunc = list(crossoverOperators.values())[int(crossoverChoice) - 1]
-    
-    print("\nOPERADORES DE MUTAÇÃO DISPONÍVEIS:")
+    crossChoice = int(input("Escolha: ")) - 1
+    crossover = list(crossoverOperators.values())[crossChoice]
+
+    print("\nOPERADORES DE MUTAÇÃO:")
     for i, op in enumerate(mutationOperators.keys(), 1):
         print(f"{i}. {op}")
-    mutationChoice = input("\nEscolha o operador de mutação (número): ")
-    mutationFunc = list(mutationOperators.values())[int(mutationChoice) - 1]
-    
-    # População inicial
+    mutChoice = int(input("Escolha: ")) - 1
+    mutate = list(mutationOperators.values())[mutChoice]
+
     population = createInitialPopulation()
-    bestRoute = min(population, key=lambda route: fitnessFunction(route, distMatrix))
-    bestFitness = fitnessFunction(bestRoute, distMatrix)
-    
-    print(f"\n=== INICIANDO OTIMIZAÇÃO ({generations} gerações) ===")
-    print(f"População inicial - Melhor fitness: {bestFitness} km")
-    
-    for generation in range(generations):
-        newPopulation = []
-        
-        # Elitismo - manter melhor solução
-        newPopulation.append(bestRoute[:])
-        
-        while len(newPopulation) < popSize:
-            # Seleção
-            parent1 = selectParents(population, distMatrix)
-            parent2 = selectParents(population, distMatrix)
-            
-            # Crossover
+    best = min(population, key=lambda r: fitnessVRP(r, distMatrix))
+    bestFit = fitnessVRP(best, distMatrix)
+
+    for gen in range(generations):
+        newPop = [best[:]]
+
+        while len(newPop) < popSize:
+            p1 = selectParents(population, distMatrix)
+            p2 = selectParents(population, distMatrix)
+
             if random.random() < crossoverRate:
-                child1, child2 = crossoverFunc(parent1, parent2)
+                c1, c2 = crossover(p1, p2)
             else:
-                child1, child2 = parent1[:], parent2[:]
-            
-            # Mutação
+                c1, c2 = p1[:], p2[:]
+
             if random.random() < mutationRate:
-                child1 = mutationFunc(child1)
+                c1 = mutate(c1)
             if random.random() < mutationRate:
-                child2 = mutationFunc(child2)
-            
-            newPopulation.extend([child1, child2])
-        
-        population = newPopulation[:popSize]
-        
-        # Atualizar melhor solução
-        currentBest = min(population, key=lambda route: fitnessFunction(route, distMatrix))
-        currentFitness = fitnessFunction(currentBest, distMatrix)
-        
-        if currentFitness < bestFitness:
-            bestRoute = currentBest[:]
-            bestFitness = currentFitness
-            print(f"Geração {generation+1}: Nova melhor solução = {bestFitness} km")
-        
-        # Progresso a cada 10 gerações
-        if (generation + 1) % 10 == 0:
-            print(f"Geração {generation+1}: Melhor fitness = {bestFitness} km")
-    
-    return bestRoute, bestFitness
+                c2 = mutate(c2)
+
+            newPop.extend([c1, c2])
+
+        population = newPop[:popSize]
+
+        current = min(population, key=lambda r: fitnessVRP(r, distMatrix))
+        currentFit = fitnessVRP(current, distMatrix)
+
+        if currentFit < bestFit:
+            best = current[:]
+            bestFit = currentFit
+            print(f"Geração {gen+1}: NOVO MELHOR = {bestFit}")
+
+    return best, bestFit
+
+
+def printVRP(route, distMatrix):
+    routes = splitIntoVehicles(route)
+    print("\n==== MELHORES ROTAS POR VEÍCULO ====")
+
+    for i, r in enumerate(routes):
+        print(f"\nVeículo {i+1}: 0 -> {' -> '.join(map(str,r))} -> 0")
+        curr = 0
+        dist = 0
+        for c in r:
+            dist += distMatrix[curr][c]
+            curr = c
+        dist += distMatrix[curr][0]
+        print(f"Distância: {dist} km")
+
+
 
 def main():
-    print("=== PROBLEMA DE ROTEAMENTO DE VEÍCULOS (VRP) ===")
-    print(f"Pontos: {numPoints} (nomeados de 0 a {numPoints-1})")
-    print(f"Ponto inicial/final: {startIdx}")
-    print()
-    
-    distMatrix = generateDistanceMatrix()
-    
-    # Executar algoritmo genético
-    bestRoute, bestFitness = geneticAlgorithm(distMatrix)
-    
-    print("\n=== RESULTADO FINAL ===")
-    printRouteInfo(bestRoute, distMatrix, "MELHOR ROTA ENCONTRADA")
-    
-    # Comparar com rota aleatória inicial
-    randomRoute = list(range(1, numPoints))
-    random.shuffle(randomRoute)
-    randomFitness = fitnessFunction(randomRoute, distMatrix)
-    
-    improvement = randomFitness - bestFitness
-    print(f"\nComparação com rota aleatória:")
-    print(f"Rota aleatória: {randomFitness} km")
-    print(f"Melhor rota AG: {bestFitness} km")
-    print(f"Melhoria: {improvement} km ({improvement/randomFitness*100:.1f}%)")
+    print("=== VRP - ROTEAMENTO DE VEÍCULOS ===")
+    print(f"Clientes: {numPoints-1}")
+    print(f"Veículos: {numVehicles}")
+
+    dist = generateDistanceMatrix()
+    best, bestFit = geneticAlgorithm(dist)
+
+    printVRP(best, dist)
+    print(f"\nCusto total: {bestFit} km")
+
 
 if __name__ == "__main__":
     main()
